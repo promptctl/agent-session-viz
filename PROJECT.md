@@ -70,36 +70,13 @@ texts show up in every session, and what is the total tax? This milestone is
 deliberately unspecified beyond that; milestone 1 will teach us which questions are
 worth asking at scale.
 
-## Shape of the system
+## How it is built
 
-Three parts, one direction of flow:
-
-1. **Ingest** reads transcript files and writes the index. This is the only place the
-   filesystem is touched and the only place the transcript format is understood. It
-   is a cursor over an append-only file: first load and live tailing are the same
-   operation started at different offsets.
-2. **Index** is the SQLite database. It is derived, disposable, and rebuildable from
-   the transcripts at any time. The transcripts are the truth; the index is a fast
-   way to ask them questions.
-3. **Views** are the React front end reading from the index through the backend and
-   receiving live updates as the index changes. All analysis is a query over the
-   index; the views never see a transcript.
-
-## What we already know about the territory
-
-Small findings from a first look at the target transcript. They shape the design
-enough to record now, and each one gets properly investigated later.
-
-- One API response is written as several JSONL records (one per content block), and
-  each carries the same usage object. Summing usage per record overcounts several
-  times over. Cost belongs to the request, not the record.
-- Most records in a transcript are not conversation. Harness attachments (hook
-  outputs, reminders, snapshots, listings) outnumber user and assistant messages
-  combined, and some individual attachments are the largest records in the file.
-- Tool results are the other heavyweight. A few results account for most of the
-  bytes; large ones are also spilled to a sidecar directory next to the transcript.
-- Line lengths span four orders of magnitude, so parsing must stream by line, never
-  load a file whole.
+[ARCHITECTURE.md](ARCHITECTURE.md) is the concrete design: the packages, the cost
+model, the index tables, the live-update path, the decisions already made, and the
+questions the build still has to settle. This document owns the why and the what;
+that one owns the how. When the two disagree, fix whichever is wrong rather than
+letting them drift.
 
 ## Principles that will guide the technical work
 
@@ -119,9 +96,9 @@ enough to record now, and each one gets properly investigated later.
 
 ## Stack
 
-Node backend, SQLite index, React front end with a component library, Tailwind, and
-zustand for client state. Library choices within that stack are a technical decision
-for later.
+Node and SQLite on the back, React with a component library, Tailwind, and zustand
+on the front. Everything runs locally. Specific libraries are named in the
+architecture doc.
 
 ## Out of scope
 
