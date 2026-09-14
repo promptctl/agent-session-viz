@@ -1,0 +1,15 @@
+{
+  "name": "agent-session-viz",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.2",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b && pnpm -r exec tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}
