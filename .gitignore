@@ -1,3 +1,5 @@
 node_modules/
 dist/
 *.tsbuildinfo
+# Real session transcripts are personal data and never enter git history.
+fixtures/

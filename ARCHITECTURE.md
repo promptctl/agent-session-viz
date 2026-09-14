@@ -204,5 +204,7 @@ Done for the ingest and cost model means: the target session parses with zero
 `unknown` and zero `malformed` records, the request count and per-class token totals
 match an independent computation over the raw file, and the sum of item estimates
 entering between two requests fits the observed `cache_creation` within a stated
-tolerance. Those checks are tests in `core` and `server`, run against a checked-in
-copy of the target transcript, and they are the bar for milestone 1's numbers.
+tolerance. Those checks are tests in `core` and `server`, run against a local copy
+of the target transcript under `fixtures/`, and they are the bar for milestone 1's
+numbers. Real transcripts are personal data and are never committed: `fixtures/` is
+gitignored, so a fresh clone has no fixture until one is copied in by hand.
