@@ -70,9 +70,11 @@ reminders are attributable exactly like messages.
 Three derived concepts sit on top of records.
 
 **Request.** One API round trip, keyed by `requestId`. The harness writes one
-`assistant` record per content block, and every block repeats the whole `usage`
-object. A request is the group of those records; its usage is taken once. Its
-`seq` is its position in the session's request order.
+`assistant` record per content block as the response streams, and every block carries
+the whole `usage` object as of the moment it was written. Early blocks carry partial
+counts, so a request's usage is its last block's. Assistant records the harness writes
+itself (model `<synthetic>`) are not API output and belong to no request, even when they
+share a `requestId`. A request's `seq` is its position in the session's request order.
 
 **Item.** Anything that occupies context: a user prompt, an assistant text or
 thinking block, a tool call, a tool result, an attachment, the system prompt, the
