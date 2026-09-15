@@ -46,8 +46,12 @@ variants exist that the file format does not name:
 
 - `unknown` holds any record whose `type` the parser does not recognize, with the
   raw JSON intact.
-- `malformed` holds any line that is not valid JSON, with the raw bytes and the
-  reason.
+- `malformed` holds any line core cannot read as a record: not valid JSON, not an
+  object with a string `type`, or a recognized type whose fields do not fit. It keeps
+  the raw bytes and the reason.
+
+Both keep the record's link in the parent chain (`uuid` and `parentUuid`) whenever the
+line has one, so a record core cannot read never cuts its descendants off from the root.
 
 Both are stored, counted, and shown. The parser never drops a line.
 

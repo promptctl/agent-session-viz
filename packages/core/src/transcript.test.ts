@@ -1,9 +1,10 @@
 import { describe, expect, test } from "vitest";
 import { parseLine } from "./index.js";
 
+const link = { uuid: "u2", parentUuid: "u1" };
+
 const chain = {
-  uuid: "u2",
-  parentUuid: "u1",
+  ...link,
   timestamp: "2026-01-01T00:00:00.000Z",
   sessionId: "s1",
   isSidechain: false,
@@ -39,6 +40,27 @@ describe("parseLine", () => {
     });
   });
 
+  test("a harness-written assistant message has no request and no thinking count", () => {
+    const { output_tokens_details: _, ...unreported } = usage;
+    const line = JSON.stringify({
+      type: "assistant",
+      ...chain,
+      message: { id: "msg_2", model: "<synthetic>", stop_reason: "stop_sequence", content: [], usage: unreported },
+    });
+    expect(parseLine(line)).toMatchObject({
+      type: "assistant",
+      requestId: undefined,
+      message: { usage: { output_tokens_details: null } },
+    });
+  });
+
+  test("a null thinking count reads the same as an absent one", () => {
+    expect(parseLine(assistantLine([], { ...usage, output_tokens_details: null }))).toMatchObject({
+      type: "assistant",
+      message: { usage: { output_tokens_details: null } },
+    });
+  });
+
   test("resolves the flags the format omits when false", () => {
     const line = JSON.stringify({
       type: "user",
@@ -69,11 +91,12 @@ describe("parseLine", () => {
       type: "malformed",
       line: truncated,
       reason: expect.stringContaining("JSON"),
+      chain: null,
     });
   });
 
   test("an empty line is malformed", () => {
-    expect(parseLine("")).toEqual({ type: "malformed", line: "", reason: expect.stringContaining("JSON") });
+    expect(parseLine("")).toEqual({ type: "malformed", line: "", reason: expect.stringContaining("JSON"), chain: null });
   });
 
   test.each(["42", "[]", "null", '{"uuid":"u1"}', '{"type":7}'])(
@@ -83,17 +106,26 @@ describe("parseLine", () => {
     },
   );
 
-  test.each(["compaction-marker", "toString", "constructor"])("an unrecognized record type is unknown with its JSON intact: %s", (type) => {
-    const raw = { type, payload: { nested: [1, 2] } };
-    expect(parseLine(JSON.stringify(raw))).toEqual({ type: "unknown", raw });
+  test.each(["compaction-marker", "toString", "constructor"])(
+    "an unrecognized record type is unknown with its JSON intact: %s",
+    (type) => {
+      const raw = { type, payload: { nested: [1, 2] } };
+      expect(parseLine(JSON.stringify(raw))).toEqual({ type: "unknown", raw, chain: null });
+    },
+  );
+
+  test("an unrecognized record type in the chain keeps its chain link", () => {
+    const raw = { type: "compaction-marker", ...link };
+    expect(parseLine(JSON.stringify(raw))).toEqual({ type: "unknown", raw, chain: link });
   });
 
-  test("a recognized record type with a field of the wrong shape is malformed, naming the field", () => {
+  test("a recognized record type with a field of the wrong shape is malformed, naming the field, and keeps its chain link", () => {
     const line = assistantLine([], { ...usage, input_tokens: "2" });
     expect(parseLine(line)).toEqual({
       type: "malformed",
       line,
       reason: "assistant: message.usage.input_tokens: expected number, got string",
+      chain: link,
     });
   });
 
@@ -109,7 +141,9 @@ describe("parseLine", () => {
     const block = { type: "tool_use", id: "t1", input: {} };
     expect(parseLine(assistantLine([block]))).toMatchObject({
       type: "assistant",
-      message: { content: [{ type: "malformed", raw: block, reason: "tool_use: message.content[0].name: expected string, got nothing" }] },
+      message: {
+        content: [{ type: "malformed", raw: block, reason: "tool_use: message.content[0].name: expected string, got nothing" }],
+      },
     });
   });
 

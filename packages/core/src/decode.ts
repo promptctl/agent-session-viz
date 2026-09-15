@@ -101,9 +101,12 @@ export const array =
   };
 
 // Reads the keys the shape names and ignores the rest.
-export function object<S extends Shape>(shape: S): Decoder<ObjectOf<S>> {
+export type ObjectDecoder<S extends Shape> = Decoder<ObjectOf<S>> & { readonly shape: S };
+
+// The decoder carries its shape so a larger object can spread these fields into its own.
+export function object<S extends Shape>(shape: S): ObjectDecoder<S> {
   const fields = Object.entries(shape);
-  return (input, path) => {
+  const decode: Decoder<ObjectOf<S>> = (input, path) => {
     if (!isJsonObject(input)) return fail(path, "object", input);
     const value: { [key: string]: unknown } = {};
     for (const [key, decode] of fields) {
@@ -116,6 +119,7 @@ export function object<S extends Shape>(shape: S): Decoder<ObjectOf<S>> {
     // shape its decoded value; TypeScript cannot follow a loop over a mapped type.
     return ok(value as ObjectOf<S>);
   };
+  return Object.assign(decode, { shape });
 }
 
 export type Variant<Tag extends string, T> = { readonly tag: Tag; readonly decode: Decoder<T> };
