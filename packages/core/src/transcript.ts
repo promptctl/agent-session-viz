@@ -2,6 +2,7 @@
 //
 // Arms type the fields that say what a record put into context, where it sits in the
 // parent chain, and what it cost. Other fields stay in the raw line, which ingest keeps.
+// A field is optional exactly when some Claude Code version omits it.
 
 import {
   absentAs,
@@ -18,6 +19,7 @@ import {
   parseJson,
   string,
   tagged,
+  type UnknownArm,
   variant,
 } from "./decode.js";
 
@@ -59,10 +61,10 @@ const attachment = tagged(
   variant("model", { text: string, identity: json }),
   variant("date", { date: string }),
   variant("edited_text_file", { filename: string, snippet: string }),
-  variant("skill_listing", { content: string, names: strings, skillCount: number, isInitial: boolean }),
+  variant("skill_listing", { content: string, names: optional(strings), skillCount: number, isInitial: boolean }),
   variant("prompt_snapshot", {
     systemPrompt: strings,
-    tools: optional(array(object({ name: string, description: string, schema: json }))),
+    tools: optional(array(object({ name: string, description: string, schema: optional(json) }))),
     cliPrefix: optional(string),
   }),
   variant("command_permissions", { allowedTools: strings }),
@@ -73,20 +75,17 @@ const attachment = tagged(
   variant("instructions", { files: array(json) }),
   variant("environment", { snapshot: json }),
   variant("session_context", { context: json }),
-  variant("auto_mode", { bashFirstSteer: string }),
+  variant("auto_mode", { bashFirstSteer: optional(string) }),
   variant("remote_session_change", { url: nullable(string), pr: string, commit: string }),
 );
 export type Attachment = Infer<typeof attachment>;
 
-// Records in the parent chain. The chain from a record back to the root is the context
-// the model saw at that point.
-const chain = {
-  uuid: string,
-  parentUuid: nullable(string),
-  timestamp: string,
-  sessionId: string,
-  isSidechain: boolean,
-};
+// A record's place in the parent chain. The chain from a record back to the root is the
+// context the model saw at that point.
+const link = object({ uuid: string, parentUuid: nullable(string) });
+export type ChainLink = Infer<typeof link>;
+
+const chain = { ...link.shape, timestamp: string, sessionId: string, isSidechain: boolean };
 
 // One API response is written as one assistant record per content block, each repeating
 // the full usage, so usage belongs to the requestId and never sums over records.
@@ -95,7 +94,8 @@ const usage = object({
   output_tokens: number,
   cache_creation_input_tokens: number,
   cache_read_input_tokens: number,
-  output_tokens_details: object({ thinking_tokens: number }),
+  // Versions omit it or write null; both mean the thinking count was not reported.
+  output_tokens_details: absentAs(nullable(object({ thinking_tokens: number })), null),
 });
 
 const record = tagged(
@@ -106,7 +106,8 @@ const record = tagged(
   }),
   variant("assistant", {
     ...chain,
-    requestId: string,
+    // Absent on messages the harness writes itself (model "<synthetic>"), which are no API request.
+    requestId: optional(string),
     message: object({
       id: string,
       model: string,
@@ -120,7 +121,7 @@ const record = tagged(
   // Session-state records sit outside the chain.
   variant("mode", { mode: string }),
   variant("permission-mode", { permissionMode: string }),
-  variant("last-prompt", { leafUuid: string, lastPrompt: optional(string) }),
+  variant("last-prompt", { leafUuid: optional(string), lastPrompt: optional(string) }),
   variant("ai-title", { aiTitle: string }),
   variant("cost-state", { totalCostUSD: number, modelUsage: json }),
   variant("file-history-snapshot", { messageId: string, isSnapshotUpdate: boolean, snapshot: json }),
@@ -129,17 +130,34 @@ const record = tagged(
   variant("atis-latch", { atis: string }),
 );
 
-// At the record level a broken line keeps its bytes, not a JSON value: the line may not
-// be JSON at all.
-export type MalformedLine = { readonly type: "malformed"; readonly line: string; readonly reason: string };
-export type Record = Exclude<Infer<typeof record>, MalformedArm> | MalformedLine;
+// A record core cannot read still keeps its chain link whenever the line has one, so it
+// never cuts its descendants off from the root. At this level a broken line keeps its
+// bytes, not a JSON value: the line may not be JSON at all.
+export type UnknownRecord = UnknownArm & { readonly chain: ChainLink | null };
+export type MalformedLine = {
+  readonly type: "malformed";
+  readonly line: string;
+  readonly reason: string;
+  readonly chain: ChainLink | null;
+};
+export type Record = Exclude<Infer<typeof record>, UnknownArm | MalformedArm> | UnknownRecord | MalformedLine;
 
 // Never throws and never drops: every line, including an empty or truncated one, is
 // exactly one Record.
 export function parseLine(line: string): Record {
   const parsed = parseJson(line);
-  const decoded = parsed.ok ? record(parsed.value, "") : parsed;
-  if (!decoded.ok) return { type: "malformed", line, reason: decoded.reason };
+  if (!parsed.ok) return { type: "malformed", line, reason: parsed.reason, chain: null };
+  const linked = link(parsed.value, "");
+  const chainLink = linked.ok ? linked.value : null;
+  const decoded = record(parsed.value, "");
+  if (!decoded.ok) return { type: "malformed", line, reason: decoded.reason, chain: chainLink };
   const value = decoded.value;
-  return value.type === "malformed" ? { type: "malformed", line, reason: value.reason } : value;
+  switch (value.type) {
+    case "malformed":
+      return { type: "malformed", line, reason: value.reason, chain: chainLink };
+    case "unknown":
+      return { ...value, chain: chainLink };
+    default:
+      return value;
+  }
 }
