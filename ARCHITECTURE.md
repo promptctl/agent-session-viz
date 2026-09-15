@@ -53,7 +53,9 @@ Both are stored, counted, and shown. The parser never drops a line.
 
 Message content parses the same way: a `ContentBlock` union of `text`, `thinking`,
 `tool_use`, `tool_result`, and `unknown`. Attachments parse into an `Attachment`
-union keyed on `attachment.type`, with the same `unknown` arm.
+union keyed on `attachment.type`, with the same `unknown` arm. Both nested unions also
+have a `malformed` arm for a recognized type whose fields do not fit, so a bad block or
+attachment is surfaced without losing its record's place in the parent chain.
 
 Records link by `parentUuid`. The chain from any record back to the root is the
 context the model saw at that point. Attachments are in the chain, so hook output and
